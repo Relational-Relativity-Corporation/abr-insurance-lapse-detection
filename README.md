@@ -29,6 +29,36 @@ precisely at the declared event boundary.
 This is a proof of concept, not a production system. Results are bounded by the
 declared measurement mapping. No claim is made beyond the declared domain.
 
+## Why This Matters
+
+Standard actuarial lapse models ask an index-local question: is this cell's rate high
+or low? That question misses the relational structure across cells entirely.
+
+The relational question is different: how spread out are lapse rates across cells that
+are adjacent in duration and premium jump exposure? When spread is low, policyholders
+are behaving similarly regardless of their premium jump exposure. When spread is high,
+the field is fracturing — some cells are lapsing at dramatically different rates than
+their declared neighbors. That fracturing is structurally observable in the relational
+field.
+
+The spread elevation at duration 10 — 31.6x above baseline on synthetic data — is
+visible in the relational field at the event boundary. A standard model looking at
+per-cell lapse rates sees the same event, but only after the rates have already moved.
+The relational signal is structural, not statistical — it does not require enough data
+points to achieve significance. It requires declared adjacency.
+
+Concretely: a pricing actuary or risk manager could observe the field beginning to
+fracture during the level term period and adjust reserve assumptions, reinsurance
+positioning, or product pricing before the shock lapse cohort completes its behavior.
+Earlier structural visibility into a known high-cost event, derived from a
+mathematically declared observable rather than a fitted model.
+
+The secondary value is auditability. Every assumption in this pipeline is declared.
+An actuary presenting to a regulator or internal model governance committee can point
+to exactly what is being measured, what is being discarded, and what remains an open
+condition. That is not typical of ML-based lapse models, which are black boxes
+relative to this framework.
+
 ## Data Source
 
 **SOA 2014 Post-Level Term Lapse and Mortality Study**
