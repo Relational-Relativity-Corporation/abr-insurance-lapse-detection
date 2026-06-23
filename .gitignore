@@ -1,0 +1,14 @@
+﻿# Data files — download from SOA directly
+data/*.xlsx
+data/*.zip
+data/*.csv
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+.env
+venv/
