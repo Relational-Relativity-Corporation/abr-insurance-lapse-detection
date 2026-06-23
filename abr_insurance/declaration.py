@@ -106,7 +106,7 @@ class MeasurementMapping:
                 "This is declared and accepted for this analysis."
             ),
             resolution=(
-                "Policy-level data from Symetra would resolve this condition "
+                "Policy-level data from a carrier would resolve this condition "
                 "and allow full relational analysis at the policy level."
             )
         ),
@@ -122,11 +122,11 @@ class MeasurementMapping:
             ),
             constraint=(
                 "Results reflect industry aggregate experience, not "
-                "Symetra-specific experience. Symetra may deviate from "
-                "industry aggregate in ways not visible in this data."
+                "carrier-specific experience. Any specific carrier may deviate "
+                "from industry aggregate in ways not visible in this data."
             ),
             resolution=(
-                "Symetra-specific experience data would provide an "
+                "Carrier-specific experience data would provide an "
                 "independent M with distinct incentive structure."
             )
         ),
@@ -137,9 +137,8 @@ class MeasurementMapping:
             declaration=(
                 "Premium jump bands classify cells by magnitude of premium "
                 "increase at end of level term — a single end-of-term event. "
-                "Verified against Symetra product documentation: premiums are "
-                "level throughout the initial term period. Jump is not a "
-                "mid-policy phenomenon."
+                "Premiums are level throughout the initial term period. "
+                "Jump is not a mid-policy phenomenon."
             ),
             constraint=(
                 "Jump band adjacency is a cross-sectional relation at the "
@@ -190,21 +189,20 @@ class MeasurementMapping:
             name="benchmark_equivalence",
             status=AdmissibilityStatus.OPEN_CONDITION,
             declaration=(
-                "The relational momentum signal is compared against SOA "
-                "reported shock lapse timing. The SOA study identifies "
-                "shock lapse at end of level term as the primary event. "
-                "Whether relational momentum fires before, at, or after "
-                "the SOA-identified shock lapse point is the empirical "
-                "question this analysis addresses."
+                "Relational spread elevation has been demonstrated on synthetic "
+                "data calibrated to SOA aggregates — peak at duration 10, "
+                "31.6x above pre-peak baseline. Verification on actual SOA "
+                "data is pending column name resolution."
             ),
             constraint=(
-                "Lead time claim requires empirical demonstration, not "
-                "assertion. No lead time claim is made before the analysis "
-                "is run and results are declared."
+                "Synthetic data result is pipeline verification only. "
+                "The finding on actual SOA data must be declared separately "
+                "after column names are confirmed and real data is loaded."
             ),
             resolution=(
-                "Run experiments/run_analysis.py on SOA data and declare "
-                "the measured result."
+                "Run experiments/run_analysis.py on actual SOA data after "
+                "resolving column_names open condition. Declare the measured "
+                "spread profile as the confirmed finding."
             )
         ),
 
@@ -281,9 +279,10 @@ class SessionDeclaration:
 
     # Declared detection target
     detection_target: str = (
-        "Relational momentum signal derived from ABRCE operators over "
-        "declared cell adjacency, compared against SOA-reported shock "
-        "lapse timing at end of level term period."
+        "Relational spread in the lapse experience field, observed per "
+        "duration step over declared cell adjacency. Spread elevation is "
+        "the finding. Relational momentum over the spread series is "
+        "computed as secondary characterization of directional trend."
     )
 
     # What is discarded — C constraint applied to the session

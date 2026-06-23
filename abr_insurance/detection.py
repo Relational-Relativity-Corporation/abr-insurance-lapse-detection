@@ -7,8 +7,12 @@
 #   2. Load SOA data and verify domain membership
 #   3. Build declared relational structure (typed edges)
 #   4. Apply A → B → R → E over declared relations
-#   5. Compute relational spread and momentum as detection signals
-#   6. Return declared outputs with provenance
+#   5. Compute relational spread by duration as the primary signal
+#   6. Compute relational momentum as secondary characterization signal
+#   7. Return declared outputs with provenance
+#
+# Primary goal: observe and characterize relational spread across the
+# duration field. Spread elevation is the finding. No threshold-as-detection.
 #
 # No operator is called before declaration.verify() succeeds.
 # No silent reduction. All projections declared.
@@ -35,6 +39,10 @@ class DetectionResult:
     """
     Declared output of the detection pipeline.
 
+    Primary signal: relational spread by duration.
+    Spread is observed and reported — not thresholded.
+    Elevation ratio and peak location are declared findings.
+
     All fields state what they are, what they preserve,
     and what they discard — per C constraint.
     """
@@ -48,21 +56,23 @@ class DetectionResult:
     lapse_field: Optional[np.ndarray] = None     # (n_cells,) raw lapse rates
     a_field: Optional[np.ndarray] = None          # (n_edges,) gradient field A(x)
     b_field: Optional[np.ndarray] = None          # (n_edges,) accumulated field B(A(x))
-    r_field: Optional[np.ndarray] = None          # (n_edges,) kernel output E(x,ρ) = R(B(A(x)),ρ(A(x)))
-    e_field: Optional[np.ndarray] = None          # (n_edges,) C(r) — declared projection of kernel output
+    e_kernel: Optional[np.ndarray] = None         # (n_edges,) kernel output E(x,ρ) = R(B(A(x)),ρ(A(x)))
+    c_projection: Optional[np.ndarray] = None     # (n_edges,) C(E) — declared projection of kernel output
     rho: Optional[np.ndarray] = None              # (n_cells,) local contrast
 
-    # Detection signals — declared projections
-    spread_by_duration: Optional[np.ndarray] = None   # relational spread per duration
-    momentum: Optional[np.ndarray] = None              # relational momentum series
+    # Primary signal — relational spread by duration
+    spread_by_duration: Optional[np.ndarray] = None   # (n_durations,) spread per duration step
+
+    # Secondary signal — relational momentum over spread series
+    momentum: Optional[np.ndarray] = None             # (n_durations,) directional trend signal
 
     # Declared projection discards
     projection_discards: list = field(default_factory=lambda: [
         "spread_by_duration: discards within-duration cell arrangement, "
-        "retains scalar variance per duration step",
+        "retains scalar relational variance per duration step",
         "momentum: discards spread magnitude beyond unit scale via C, "
-        "retains directional trend signal",
-        "e_field: discards absolute lapse level (pre-A), "
+        "retains directional trend signal as secondary characterization",
+        "c_projection: discards absolute lapse level (pre-A), "
         "retains relational gradient structure",
     ])
 
@@ -77,6 +87,9 @@ class DetectionResult:
             f"Jump edges:      {self.n_edges_jump}",
             f"Duration steps:  {self.n_durations}",
             "",
+            "Primary signal: relational spread by duration",
+            "Spread is observed and reported — not thresholded.",
+            "",
             "Declared projection discards:",
         ]
         for d in self.projection_discards:
@@ -86,19 +99,27 @@ class DetectionResult:
             for c in self.open_conditions:
                 lines.append(f"  [{c.status.value.upper()}] {c.name}: {c.declaration}")
         if self.spread_by_duration is not None:
+            peak_idx = int(np.nanargmax(self.spread_by_duration))
+            baseline = np.nanmean(self.spread_by_duration[:peak_idx]) if peak_idx > 0 else np.nan
+            peak_val = float(np.nanmax(self.spread_by_duration))
+            elevation = peak_val / baseline if (baseline and baseline > 0) else None
             lines += [
                 "",
                 "Relational spread by duration:",
-                f"  min:  {np.nanmin(self.spread_by_duration):.6f}",
-                f"  max:  {np.nanmax(self.spread_by_duration):.6f}",
-                f"  mean: {np.nanmean(self.spread_by_duration):.6f}",
+                f"  min:       {np.nanmin(self.spread_by_duration):.6f}",
+                f"  max:       {peak_val:.6f}  (at duration index {peak_idx})",
+                f"  mean:      {np.nanmean(self.spread_by_duration):.6f}",
             ]
+            if elevation is not None:
+                lines.append(
+                    f"  elevation: {elevation:.1f}x above pre-peak baseline mean"
+                )
         if self.momentum is not None:
             valid = self.momentum[~np.isnan(self.momentum)]
             if len(valid) > 0:
                 lines += [
                     "",
-                    "Relational momentum:",
+                    "Relational momentum (secondary characterization):",
                     f"  min:  {valid.min():.6f}",
                     f"  max:  {valid.max():.6f}",
                     f"  mean: {valid.mean():.6f}",
@@ -109,27 +130,25 @@ class DetectionResult:
 # ---- Data loader -------------------------------------------------------
 
 def load_soa_data(filepath: str,
-                  sheet_name: str = "Lapse Study",
+                  sheet_name: Optional[str] = "Lapse Study",
                   lapse_col: str = "LapseRate",
                   cohort_col: str = "IssueYear",
                   duration_col: str = "Duration",
                   jump_col: str = "PremiumJumpBand") -> pd.DataFrame:
     """
-    Load SOA Post-Level Term lapse study data from Excel.
+    Load lapse study data from Excel or CSV.
 
-    Column names are declared open condition — verify against
-    actual file and update parameters if needed.
+    Accepts:
+      - SOA Excel file (sheet_name required)
+      - Synthetic CSV (sheet_name ignored)
 
-    Parameters
-    ----------
-    filepath     : path to SOA Excel file
-    sheet_name   : worksheet name (open condition — verify)
-    lapse_col    : lapse rate column name (open condition — verify)
-    cohort_col   : issue year column name (open condition — verify)
-    duration_col : duration column name (open condition — verify)
-    jump_col     : premium jump band column name (open condition — verify)
+    Column names are declared open condition for Excel.
+    Synthetic CSV uses declared column names by construction.
     """
-    df = pd.read_excel(filepath, sheet_name=sheet_name)
+    if filepath.endswith('.csv'):
+        df = pd.read_csv(filepath)
+    else:
+        df = pd.read_excel(filepath, sheet_name=sheet_name)
 
     required = [lapse_col, cohort_col, duration_col, jump_col]
     missing = [c for c in required if c not in df.columns]
@@ -157,21 +176,24 @@ def run_detection(filepath: str,
                   rho_base: float = 0.4,
                   momentum_window: int = 5,
                   include_jump: bool = True,
-                  verbose: bool = True) -> DetectionResult:
+                  verbose: bool = True) -> "tuple[DetectionResult, list]":
     """
     Full detection pipeline: declare → load → relate → detect.
 
+    Primary output: relational spread by duration.
+    Spread elevation is the finding — observed and reported, not thresholded.
+
     Parameters
     ----------
-    filepath        : path to SOA Excel file
+    filepath        : path to SOA Excel file or synthetic CSV
     rho_base        : local contrast scaling (default 0.4, per kernel spec)
-    momentum_window : rolling window for momentum signal
+    momentum_window : rolling window for momentum signal (secondary)
     include_jump    : include premium jump adjacency (default True)
     verbose         : print declaration and result summary
 
     Returns
     -------
-    DetectionResult with all declared outputs and open conditions.
+    (DetectionResult, durations) with all declared outputs and open conditions.
     """
 
     # ---- Step 1: Declaration (Origin declares before operators act) ----
@@ -230,15 +252,19 @@ def run_detection(filepath: str,
     r = operator_r(b, rel, rho)
     # C is a declared projection of the kernel output, not a kernel operator.
     # r is the kernel output E(x,ρ) = R(B(A(x)),ρ(A(x))).
-    # c_projected is C(r) — bounded coherence applied as final projection.
+    # c_projected is C(E) — bounded coherence applied as final projection.
     # Preserves: sign and ordering of relational circulation field.
     # Discards: magnitude beyond unit scale.
     c_projected = operator_c(r)
 
-    # ---- Step 6: Relational spread by duration -------------------------
-    # Declared projection: one spread value per duration step.
-    # Preserves: scalar relational variance across cells at each duration.
-    # Discards: within-duration cell arrangement.
+    # ---- Step 6: Relational spread by duration (PRIMARY SIGNAL) --------
+    # Declared by Origin: observable is spread in lapse experience field.
+    # Operators construct relational context. Finding lives in cell_lapse.
+    # No threshold. No detection frame. Elevation is the finding.
+    #
+    # Declared projection:
+    #   Preserves: scalar relational variance across cells at each duration.
+    #   Discards: within-duration cell arrangement.
     durations = sorted(df[duration_col].unique())
     spread_series = np.full(len(durations), np.nan)
 
@@ -248,10 +274,13 @@ def run_detection(filepath: str,
             dur_field = cell_lapse[dur_mask]
             spread_series[i] = relational_spread(dur_field)
 
-    # ---- Step 7: Relational momentum -----------------------------------
-    # Declared projection: bounded trend signal over spread series.
-    # Preserves: directional asymmetry in spread trajectory.
-    # Discards: magnitude beyond unit scale (C operator).
+    # ---- Step 7: Relational momentum (SECONDARY SIGNAL) ----------------
+    # Momentum characterizes the directional trend over the spread series.
+    # Secondary signal — does not gate or replace spread as primary finding.
+    #
+    # Declared projection:
+    #   Preserves: directional asymmetry in spread trajectory.
+    #   Discards: magnitude beyond unit scale (C operator).
     momentum = relational_momentum(
         spread_series, window=momentum_window, rho_base=rho_base
     )
@@ -265,8 +294,8 @@ def run_detection(filepath: str,
         lapse_field=cell_lapse,
         a_field=a,
         b_field=b,
-        r_field=r,                  # kernel output E(x,ρ) = R(B(A(x)),ρ(A(x)))
-        e_field=c_projected,        # C(r) — declared projection of kernel output
+        e_kernel=r,                  # kernel output E(x,ρ) = R(B(A(x)),ρ(A(x)))
+        c_projection=c_projected,    # C(E) — declared projection of kernel output
         rho=rho,
         spread_by_duration=spread_series,
         momentum=momentum,
